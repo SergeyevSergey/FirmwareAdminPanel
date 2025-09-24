@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<a href="{% url 'files:create_file' %}">Create</a>
+<br>
+<h1>Files</h1>
+{% if files %}
+    {% for file in files %}
+        <br>
+        <p>
+            {{ file.id }}: ver={{ file.version }} path={{ file.path }} time={{ file.uploaded_at }}
+        </p>
+        <a href="{% url 'files:edit_file' file.id %}">Edit</a>
+    {% endfor %}
+{% else %}
+    <p>No files present</p>
+{% endif %}
+</body>
+</html>
