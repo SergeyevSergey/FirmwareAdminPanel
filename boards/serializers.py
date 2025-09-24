@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import IntegrityError, transaction
 from .models import Board
 
 
@@ -13,5 +14,9 @@ class BoardSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         mac_address = validated_data["mac_address"]
         topic = f"board/{mac_address}"
-        instance = Board.objects.create(topic=topic, **validated_data)
-        return instance
+        try:
+            with transaction.atomic():
+                instance = Board.objects.create(topic=topic, **validated_data)
+            return instance
+        except IntegrityError:
+            return serializers.ValidationError({"mac_address": "board with this mac_address already exists"})
