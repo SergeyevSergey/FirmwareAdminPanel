@@ -1,4 +1,4 @@
-from rest_framework.generics import CreateAPIView, ListAPIView, DestroyAPIView
+from rest_framework.generics import CreateAPIView, ListAPIView, DestroyAPIView, UpdateAPIView
 from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND, HTTP_200_OK, HTTP_500_INTERNAL_SERVER_ERROR
 from rest_framework.views import APIView
@@ -10,14 +10,16 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from files.models import FirmwareFile
 from utils.functions import publish_mqtt
+from utils.pagination import BoardsListPagination
 from .models import Board
 from .serializers import BoardSerializer
 
 # Create your views here.
 
 class BoardsListAPI(ListAPIView):
-    queryset = Board.objects.all()
+    queryset = Board.objects.all().order_by("mac_address")
     serializer_class = BoardSerializer
+    pagination_class = BoardsListPagination
     permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer]
 
@@ -27,6 +29,13 @@ class BoardCreateAPI(CreateAPIView):
     serializer_class = BoardSerializer
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
+
+
+class BoardUpdateAPI(UpdateAPIView):
+    queryset = Board.objects.all()
+    serializer_class = BoardSerializer
+    lookup_field = "mac_address"
+    permission_classes = [IsAuthenticated]
 
 
 class BoardDestroyAPI(DestroyAPIView):
@@ -41,23 +50,26 @@ class FlashSingleBoardFirmwareAPI(APIView):
     parser_classes = [JSONParser]
 
     def post(self, request, *args, **kwargs):
+        file_system = FileSystemStorage()
         mac_address = request.data.get("mac_address")
         file_id = request.data.get("file_id")
         if not mac_address or not file_id:
-            return Response({"detail": "mac_address and file_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "mac_address and file_id fields are required"}, status=status.HTTP_400_BAD_REQUEST)
+
         # Validate board
         try:
             board = Board.objects.get(mac_address=mac_address)
         except Board.DoesNotExist:
             return Response({"detail": "board object not found"}, status=HTTP_404_NOT_FOUND)
+
         # Validate file
-        file_system = FileSystemStorage()
         try:
             file = FirmwareFile.objects.get(id=file_id)
         except FirmwareFile.DoesNotExist:
             return Response({"detail": "firmware file object not found"}, status=HTTP_404_NOT_FOUND)
         if not file_system.exists(file.path):
             return Response({"detail": "firmware file not found on disk"}, status=HTTP_404_NOT_FOUND)
+
         # Send MQTT message
         download_url = settings.SITE_HOST.rstrip("/") + file_system.url(file.path)
         context = {
@@ -78,17 +90,19 @@ class FlashAllBoardsFirmwareAPI(APIView):
     parser_classes = [JSONParser]
 
     def post(self, request, *args, **kwargs):
+        file_system = FileSystemStorage()
         file_id = request.data.get("file_id")
         if not file_id:
             return Response({"detail": "file_id is required"}, status=HTTP_400_BAD_REQUEST)
+
         # Validate file
-        file_system = FileSystemStorage()
         try:
             file = FirmwareFile.objects.get(id=file_id)
         except FirmwareFile.DoesNotExist:
             return Response({"detail": "firmware file object not found"}, status=HTTP_404_NOT_FOUND)
         if not file_system.exists(file.path):
             return Response({"detail": "firmware file not found on disk"}, status=HTTP_404_NOT_FOUND)
+
         # Send MQTT message
         download_url = settings.SITE_HOST.rstrip("/") + file_system.url(file.path)
         context = {

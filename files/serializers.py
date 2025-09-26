@@ -1,6 +1,7 @@
 import uuid
 from django.core.files.storage import FileSystemStorage
-from rest_framework import serializers
+from django.db import transaction, IntegrityError
+from rest_framework import serializers, exceptions
 from .models import FirmwareFile
 
 
@@ -10,15 +11,87 @@ class FirmwareFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = FirmwareFile
         fields = "__all__"
-        read_only_fields = ["uploaded_at", "path"]
+        read_only_fields = ["id", "uploaded_at", "path"]
 
     def create(self, validated_data):
-        file = validated_data.pop('file', None)
+        file_system = FileSystemStorage()
+        file = validated_data.pop("file", None)
+
+        # Validate
         if not file:
-            raise serializers.ValidationError({"file": "This field is required"})
+            raise serializers.ValidationError({"file": "this field is required"})
+
+        # Upload
         file_id = uuid.uuid4()
         filename = file.name
-        path = FileSystemStorage().save(f"firmware/{file_id}_{filename}", file)
+        try:
+            path = file_system.save(f"firmware/{file_id}_{filename}", file)
+        except Exception:
+            raise exceptions.APIException(f"failed to upload file")
+
         validated_data["path"] = path
-        instance = FirmwareFile.objects.create(id=file_id, **validated_data)
+
+        # Save
+        try:
+            with transaction.atomic():
+                instance = FirmwareFile.objects.create(id=file_id, **validated_data)
+                return instance
+        except IntegrityError:
+            if path and file_system.exists(path):
+                file_system.delete(path)
+            raise serializers.ValidationError({"id": "file integrity error"})
+        except Exception:
+            if path and file_system.exists(path):
+                file_system.delete(path)
+            raise exceptions.APIException("failed to upload file")
+
+
+class FirmwareFileUpdateSerializer(serializers.ModelSerializer):
+    file = serializers.FileField(write_only=True, required=True)
+
+    class Meta:
+        model = FirmwareFile
+        fields = "__all__"
+        read_only_fields = ["id", "uploaded_at", "path"]
+
+    def update(self, instance, validated_data):
+        file_system = FileSystemStorage()
+        new_file = validated_data.pop("file", None)
+
+        # Validate
+        if not new_file:
+            raise serializers.ValidationError({"file": "this field is required"})
+
+        # Upload new file
+        new_file_id = uuid.uuid4()
+        new_filename = new_file.name
+        try:
+            new_path = file_system.save(f"firmware/{new_file_id}_{new_filename}", new_file)
+        except Exception:
+            raise exceptions.APIException(f"failed to upload new file")
+
+        # Save
+        old_path = instance.path
+        try:
+            with transaction.atomic():
+                instance.path = new_path
+                for attr, val in validated_data.items():
+                    setattr(instance, attr, val)
+                instance.save()
+        except IntegrityError:
+            if file_system.exists(new_path):
+                file_system.delete(new_path)
+            raise serializers.ValidationError({"id": "file integrity error"})
+        except Exception:
+            if file_system.exists(new_path):
+                file_system.delete(new_path)
+            raise exceptions.APIException("failed to upload file")
+
+        # Delete old file
+        try:
+            if file_system.exists(old_path):
+                file_system.delete(old_path)
+        except Exception:
+            pass
+
         return instance

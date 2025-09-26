@@ -15,4 +15,4 @@ RUN addgroup --system app && adduser --system --ingroup app app \
 
 USER app
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--worker-class", "gthread", "--workers", "3", "--threads", "4", "--timeout", "30", "--keep-alive", "30", "--max-requests", "1000", "--max-requests-jitter", "200", "--log-level", "info"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --worker-class gthread --workers 3 --threads 4 --timeout 30 --keep-alive 30 --max-requests 1000 --max-requests-jitter 200 --log-level info --access-logfile - --error-logfile -"]

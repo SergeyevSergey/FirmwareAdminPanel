@@ -1,12 +1,15 @@
-from rest_framework.generics import ListAPIView, CreateAPIView, DestroyAPIView
+import uuid
+from rest_framework.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_400_BAD_REQUEST, HTTP_200_OK
+from rest_framework.generics import ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import transaction, IntegrityError
 from django.core.files.storage import FileSystemStorage
 from .models import FirmwareFile
-from .serializers import FirmwareFileSerializer
+from .serializers import FirmwareFileSerializer, FirmwareFileUpdateSerializer
 
 # Create your views here.
 
@@ -20,6 +23,14 @@ class FirmwareFilesListAPI(ListAPIView):
 class FirmwareFileCreateAPI(CreateAPIView):
     queryset = FirmwareFile.objects.all()
     serializer_class = FirmwareFileSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+
+class FirmwareFileUpdateAPI(UpdateAPIView):
+    queryset = FirmwareFile.objects.all()
+    serializer_class = FirmwareFileUpdateSerializer
+    lookup_field = "id"
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -47,6 +58,6 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
             return super().delete(request, *args, **kwargs)
         except Exception as e:
             return Response(
-                {"detail": "File deletion error: %s" % str(e)},
+                {"detail": f"file deletion error: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

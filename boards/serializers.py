@@ -12,11 +12,14 @@ class BoardSerializer(serializers.ModelSerializer):
         read_only_fields = ["topic"]
 
     def create(self, validated_data):
-        mac_address = validated_data["mac_address"]
-        topic = f"board/{mac_address}"
+        mac_address = validated_data.get("mac_address")
+        if not mac_address:
+            raise serializers.ValidationError({"mac_address": "this field is required"})
+        topic = f"boards/{mac_address}"
+
         try:
             with transaction.atomic():
                 instance = Board.objects.create(topic=topic, **validated_data)
-            return instance
+                return instance
         except IntegrityError:
-            return serializers.ValidationError({"mac_address": "board with this mac_address already exists"})
+            raise serializers.ValidationError({"mac_address": "board with this mac_address already exists"})

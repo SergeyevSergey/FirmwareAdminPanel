@@ -1,5 +1,6 @@
 from django.urls import path
-from .views import BoardsListAPI, BoardCreateAPI, BoardDestroyAPI, FlashSingleBoardFirmwareAPI, FlashAllBoardsFirmwareAPI
+from .views import (BoardsListAPI, BoardCreateAPI, BoardUpdateAPI, BoardDestroyAPI,
+                    FlashSingleBoardFirmwareAPI, FlashAllBoardsFirmwareAPI)
 
 app_name = "boards"
 
@@ -8,5 +9,6 @@ urlpatterns = [
     path("create/", BoardCreateAPI.as_view(), name="board_create"),
     path("flash/all/", FlashAllBoardsFirmwareAPI.as_view(), name="boards_flash"),
     path("flash/single/", FlashSingleBoardFirmwareAPI.as_view(), name="board_flash"),
+    path("update/<str:mac_address>/", BoardUpdateAPI.as_view(), name="board_update"),
     path("delete/<str:mac_address>/", BoardDestroyAPI.as_view(), name="board_delete"),
 ]
