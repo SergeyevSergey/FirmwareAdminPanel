@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN addgroup --system app && adduser --system --ingroup app app \
-    && chown -R app:app /app
+    && mkdir -p /srv/logs/django /tmp/django_uploads /srv/media \
+    && chown -R app:app /app /srv/logs /tmp/django_uploads /srv/media
 
 USER app
 

@@ -1,4 +1,5 @@
 import uuid
+import logging
 from rest_framework.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_400_BAD_REQUEST, HTTP_200_OK
 from rest_framework.generics import ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -10,6 +11,10 @@ from django.db import transaction, IntegrityError
 from django.core.files.storage import FileSystemStorage
 from .models import FirmwareFile
 from .serializers import FirmwareFileSerializer, FirmwareFileUpdateSerializer
+
+
+logger = logging.getLogger(__name__)
+
 
 # Create your views here.
 
@@ -33,6 +38,7 @@ class FirmwareFileUpdateAPI(UpdateAPIView):
     lookup_field = "id"
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ["patch"]
 
 
 class FirmwareFileDestroyAPI(DestroyAPIView):
@@ -45,19 +51,22 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
         file_system = FileSystemStorage()
         path = getattr(instance, "path", None)
         if not path:
+            logger.info("validation failed, path=%s", path)
             return super().perform_destroy(instance)
         try:
             if file_system.exists(path):
                 file_system.delete(path)
         except Exception as e:
+            logger.info("validation failed, file is not on disk, path=%s", path)
             raise
         return super().perform_destroy(instance)
 
     def delete(self, request, *args, **kwargs):
         try:
             return super().delete(request, *args, **kwargs)
-        except Exception as e:
+        except Exception:
+            logger.exception("file deletion failed")
             return Response(
-                {"detail": f"file deletion error: {str(e)}"},
+                {"detail": "unexpected error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
