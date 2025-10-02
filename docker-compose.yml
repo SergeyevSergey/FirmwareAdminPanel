@@ -37,12 +37,7 @@ services:
       - LOG_MAX_BYTES=10485760
       - LOG_BACKUP_COUNT=7
     command: >
-      sh -c "python manage.py migrate --noinput &&
-             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --worker-class gthread --workers 3 --threads 4 \
-             --timeout 30 --keep-alive 30 --max-requests 1000 --max-requests-jitter 200 \ 
-             --log-level info \
-             --access-logfile - \
-             --error-logfile -"
+      sh -c "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --worker-class gthread --workers 3 --threads 4 --timeout 30 --keep-alive 30 --max-requests 1000 --max-requests-jitter 200 --log-level info --access-logfile - --error-logfile -"
     logging:
       driver: "json-file"
       options:
@@ -134,6 +129,7 @@ services:
       - ./deployment/logs/nginx:/var/log/nginx
       - ./deployment/tmp/nginx_body:/var/lib/nginx/body
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./deployment/letsencrypt:/var/www/letsencrypt
     logging:
       driver: "json-file"
       options:
@@ -146,6 +142,9 @@ services:
     ports:
       - "1883:1883"
       - "18083:18083"
+    volumes:
+      - ./emqx_data:/opt/emqx/data
+      - ./emqx_log:/opt/emqx/log
     restart: unless-stopped
 
 volumes:

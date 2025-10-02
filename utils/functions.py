@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import paho.mqtt.publish as publish
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 # MQTT
 
+MQTT_USER = os.environ.get("MQTT_USER")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
 # Pub
 
@@ -25,7 +28,7 @@ def publish_mqtt(context: dict, topic: str):
     payload = json.dumps(context)
 
     try:
-        publish.single(topic=topic, payload=payload, hostname=host, port=port)
+        publish.single(topic=topic, payload=payload, hostname=host, port=port, auth={"username": MQTT_USER, "password": MQTT_PASSWORD})
         logger.info("published payload=%s to %s", payload, topic)
     except OSError as e:
         logger.exception("MQTT OS error")

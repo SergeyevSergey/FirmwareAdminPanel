@@ -12,6 +12,8 @@ from django.conf import settings
 from logging.handlers import RotatingFileHandler
 from utils.functions import mqtt_response_state_board
 
+MQTT_USER = os.environ.get("MQTT_USER")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 LOG_DIR = os.environ.get("LOG_DIR", "/srv/logs/mqtt_listener")
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -92,6 +94,7 @@ def run():
     signal.signal(signal.SIGINT, shutdown)
 
     client = Client()
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
     client.on_connect = on_connect
     client.on_message = on_message
 

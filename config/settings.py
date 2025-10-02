@@ -16,13 +16,18 @@ import json
 from pathlib import Path
 from datetime import timedelta
 from logging.handlers import RotatingFileHandler
+from django.core.exceptions import DisallowedHost
 
 
 # Constants
 SITE_HOST = os.environ.get("SITE_HOST")
 MQTT_HOST = os.environ.get("MQTT_HOST")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_USER = os.environ.get("MQTT_USER")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 ALLOWED_HOSTS = json.loads(os.environ.get("ALLOWED_HOSTS", "[]"))
+CSRF_TRUSTED_ORIGINS = json.loads(os.environ.get("CSRF_TRUSTED_ORIGINS", "[]"))
+
 
 # Django CORS
 CORS_ALLOW_ALL_ORIGINS = True
@@ -228,6 +233,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Logging configuration
 
+class IgnoreDisallowedHost(logging.Filter):
+    def filter(self, record):
+        if record.exc_info:
+            exc_type, _, _ = record.exc_info
+            return exc_type is not DisallowedHost
+        else:
+            return True
+
+class IgnoreNotFoundFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        if isinstance(message, str) and message.startswith("Not Found:"):
+            return False
+        else:
+            return True
+
 DJANGO_LOG_DIR = os.environ.get("DJANGO_LOG_DIR", "/srv/logs/django")
 
 try:
@@ -245,6 +269,14 @@ LOG_BACKUP_COUNT = 7
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "ignore_disallowed_host": {
+            "()": "config.settings.IgnoreDisallowedHost",
+        },
+        "ignore_not_found_filter": {
+            "()": "config.settings.IgnoreNotFoundFilter",
+        },
+    },
     "formatters": {
         "standard": {
             "format": "%(asctime)s [%(levelname)s] %(name)s %(module)s:%(lineno)d - %(message)s",
@@ -266,6 +298,7 @@ LOGGING = {
             "maxBytes": LOG_MAX_BYTES,
             "backupCount": LOG_BACKUP_COUNT,
             "encoding": "utf-8",
+            "filters": ["ignore_disallowed_host", "ignore_not_found_filter"],
         },
     },
     "loggers": {
