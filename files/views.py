@@ -47,19 +47,33 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
     lookup_field = "id"
     permission_classes = [IsAuthenticated]
 
+
     def perform_destroy(self, instance):
         file_system = FileSystemStorage()
         path = getattr(instance, "path", None)
+
+        # No file uploaded
         if not path:
-            logger.info("validation failed, path=%s", path)
+            logger.info(
+                "validation failed, path=%s",
+                path
+            )
             return super().perform_destroy(instance)
+
+        # Delete uploaded file
         try:
             if file_system.exists(path):
                 file_system.delete(path)
         except Exception as e:
-            logger.info("validation failed, file is not on disk, path=%s", path)
+            logger.info(
+                "validation failed, file is not on disk, path=%s",
+                path
+            )
             raise
+
+        # Delete instance
         return super().perform_destroy(instance)
+
 
     def delete(self, request, *args, **kwargs):
         try:
@@ -67,6 +81,6 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
         except Exception:
             logger.exception("file deletion failed")
             return Response(
-                {"detail": "unexpected error"},
+                data={"detail": "unexpected error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

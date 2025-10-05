@@ -22,7 +22,10 @@ class FirmwareFileSerializer(serializers.ModelSerializer):
 
         # Validate
         if not file:
-            logger.info("validation failed file=%s", file)
+            logger.info(
+                "validation failed file=%s",
+                file
+            )
             raise serializers.ValidationError({"file": "this field is required"})
 
         # Upload
@@ -30,9 +33,15 @@ class FirmwareFileSerializer(serializers.ModelSerializer):
         filename = file.name
         try:
             path = file_system.save(f"firmware/{file_id}_{filename}", file)
-            logger.info("file uploaded successfully, file_id=%s filename=%s", file_id, filename)
+            logger.info(
+                "file uploaded successfully, file_id=%s filename=%s",
+                file_id, filename
+            )
         except Exception:
-            logger.exception("upload failed for file_id=%s filename=%s", file_id, filename)
+            logger.exception(
+                "upload failed for file_id=%s filename=%s",
+                file_id, filename
+            )
             raise exceptions.APIException(f"failed to upload file")
 
         validated_data["path"] = path
@@ -41,17 +50,26 @@ class FirmwareFileSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic():
                 instance = FirmwareFile.objects.create(id=file_id, **validated_data)
-                logger.info("FirmwareFile created, path=%s", path)
+                logger.info(
+                    "FirmwareFile created, path=%s",
+                    path
+                )
                 return instance
         except IntegrityError:
             if path and file_system.exists(path):
                 file_system.delete(path)
-            logger.warning("FirmwareFile create failed: duplicate file_id=%s", file_id, exc_info=True)
+            logger.warning(
+                "FirmwareFile create failed: duplicate file_id=%s",
+                file_id, exc_info=True
+            )
             raise serializers.ValidationError({"id": "file integrity error"})
         except Exception:
             if path and file_system.exists(path):
                 file_system.delete(path)
-            logger.exception("save failed for file_id=%s filename=%s", file_id, filename)
+            logger.exception(
+                "save failed for file_id=%s filename=%s",
+                file_id, filename
+            )
             raise exceptions.APIException("failed to save file")
 
 
@@ -69,7 +87,10 @@ class FirmwareFileUpdateSerializer(serializers.ModelSerializer):
 
         # Validate
         if not new_file:
-            logger.info("validation failed, file=%s", new_file)
+            logger.info(
+                "validation failed, file=%s",
+                new_file
+            )
             raise serializers.ValidationError({"file": "this field is required"})
 
         # Upload new file
@@ -77,9 +98,15 @@ class FirmwareFileUpdateSerializer(serializers.ModelSerializer):
         new_filename = new_file.name
         try:
             new_path = file_system.save(f"firmware/{new_file_id}_{new_filename}", new_file)
-            logger.info("file uploaded successfully, file_id=%s filename=%s", new_file_id, new_filename)
+            logger.info(
+                "file uploaded successfully, file_id=%s filename=%s",
+                new_file_id, new_filename
+            )
         except Exception:
-            logger.exception("upload failed for file_id=%s filename=%s", new_file_id, new_filename)
+            logger.exception(
+                "upload failed for file_id=%s filename=%s",
+                new_file_id, new_filename
+            )
             raise exceptions.APIException(f"failed to upload new file")
 
         # Save
@@ -90,16 +117,25 @@ class FirmwareFileUpdateSerializer(serializers.ModelSerializer):
                 for attr, val in validated_data.items():
                     setattr(instance, attr, val)
                 instance.save()
-                logger.info("FirmwareFile updated, path=%s", new_path)
+                logger.info(
+                    "FirmwareFile updated, path=%s",
+                    new_path
+                )
         except IntegrityError:
             if file_system.exists(new_path):
                 file_system.delete(new_path)
-            logger.warning("FirmwareFile update failed: duplicate file_id=%s", new_file_id, exc_info=True)
+            logger.warning(
+                "FirmwareFile update failed: duplicate file_id=%s",
+                new_file_id, exc_info=True
+            )
             raise serializers.ValidationError({"id": "file integrity error"})
         except Exception:
             if file_system.exists(new_path):
                 file_system.delete(new_path)
-            logger.exception("update failed for file_id=%s filename=%s", new_file_id, new_filename)
+            logger.exception(
+                "update failed for file_id=%s filename=%s",
+                new_file_id, new_filename
+            )
             raise exceptions.APIException("failed to update file")
 
         # Delete old file
@@ -107,7 +143,10 @@ class FirmwareFileUpdateSerializer(serializers.ModelSerializer):
             if file_system.exists(old_path):
                 file_system.delete(old_path)
         except Exception:
-            logger.exception("deletion failed for old file with path=%s", old_path)
+            logger.exception(
+                "deletion failed for old file with path=%s",
+                old_path
+            )
             pass
 
         return instance

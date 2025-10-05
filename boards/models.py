@@ -9,5 +9,6 @@ class Board(models.Model):
         max_length=32,
         primary_key=True,
     )
+    file_version = models.CharField(max_length=64, null=True, blank=True)
     topic = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)

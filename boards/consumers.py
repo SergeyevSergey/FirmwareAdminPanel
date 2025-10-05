@@ -1,4 +1,3 @@
-import json
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 
@@ -12,14 +11,18 @@ class BoardsConsumer(AsyncJsonWebsocketConsumer):
 
     async def board_update(self, event):
         data = event.get("data")
+        command = event.get("command")
         await self.send_json({
             "event": "board_update",
+            "command": command,
             "data": data
         })
 
     async def board_timeout(self, event):
         data = event.get("data")
+        command = event.get("command")
         await self.send_json({
             "event": "board_timeout",
+            "command": command,
             "data": data
         })

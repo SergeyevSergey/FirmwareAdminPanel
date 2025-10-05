@@ -4,3 +4,4 @@ __pycache__/
 .env
 /deployment/logs/
 /media/
+/frontend_build/

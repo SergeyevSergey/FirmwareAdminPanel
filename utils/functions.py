@@ -8,27 +8,33 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django_redis import get_redis_connection
 from django.conf import settings
-from boards.models import Board
+
 
 logger = logging.getLogger(__name__)
+
 
 # MQTT
 
 MQTT_USER = os.environ.get("MQTT_USER")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
-
-# Pub
+MQTT_HOST = os.environ.get("MQTT_HOST", "emqx")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 
 class MqttError(Exception):
     pass
 
+
 def publish_mqtt(context: dict, topic: str):
-    host = settings.MQTT_HOST
-    port = settings.MQTT_PORT
     payload = json.dumps(context)
 
     try:
-        publish.single(topic=topic, payload=payload, hostname=host, port=port, auth={"username": MQTT_USER, "password": MQTT_PASSWORD})
+        publish.single(
+            topic=topic,
+            payload=payload,
+            hostname=MQTT_HOST,
+            port=MQTT_PORT,
+            auth={"username": MQTT_USER, "password": MQTT_PASSWORD}
+        )
         logger.info("published payload=%s to %s", payload, topic)
     except OSError as e:
         logger.exception("MQTT OS error")
@@ -38,43 +44,7 @@ def publish_mqtt(context: dict, topic: str):
         raise MqttError(str(e)) from e
 
 
-# Sub
-
-def mqtt_response_state_board(mac_address: str, is_active: bool):
-    # Redis cache update
-    try:
-        cache = get_redis_connection("default")
-        pending = cache.get(f"pending:{mac_address}")
-
-        if pending:
-            cache.delete(f"pending:{mac_address}")
-            logger.info("deleted pending flag for mac_address=%s", mac_address)
-        else:
-            logger.warning("reply for %s but no pending flag found", mac_address)
-            return
-
-    except (RedisError, ConnectionError):
-        logger.exception("Redis connection error")
-    except Exception:
-        logger.exception("unexpected error")
-
-    # Board object update
-    Board.objects.filter(mac_address=mac_address).update(is_active=is_active)
-
-    # Send WebSocket event
-    event = {
-        "type": "board_update",
-        "data": {
-            "mac_address": mac_address,
-            "is_active": is_active
-        }
-    }
-    ws_send(event, "boards")
-
-
-
 # WebSocket
-
 
 def ws_send(event: dict, group: str):
     try:

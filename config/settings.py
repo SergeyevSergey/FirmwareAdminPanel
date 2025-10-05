@@ -21,12 +21,16 @@ from django.core.exceptions import DisallowedHost
 
 # Constants
 SITE_HOST = os.environ.get("SITE_HOST")
-MQTT_HOST = os.environ.get("MQTT_HOST")
+MQTT_HOST = os.environ.get("MQTT_HOST", "emqx")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_USER = os.environ.get("MQTT_USER")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
+MQTT_COMMON_TOPIC = os.environ.get("MQTT_COMMON_TOPIC", "boards")
+MQTT_REPLY_TOPIC = os.environ.get("MQTT_REPLY_TOPIC", "boards/replies")
+MQTT_STREAM_NAME = os.environ.get("MQTT_STREAM_NAME", f"mqtt:stream:{MQTT_COMMON_TOPIC}")
+MQTT_CONSUMER_GROUP = os.environ.get("MQTT_CONSUMER_GROUP", "mqtt_workers")
+MQTT_WORKER_COUNT = int(os.environ.get("MQTT_WORKER_COUNT", "10"))
 ALLOWED_HOSTS = json.loads(os.environ.get("ALLOWED_HOSTS", "[]"))
-CSRF_TRUSTED_ORIGINS = json.loads(os.environ.get("CSRF_TRUSTED_ORIGINS", "[]"))
 
 
 # Django CORS
@@ -71,6 +75,8 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
+    CSRF_TRUSTED_ORIGINS = json.loads(os.environ.get("CSRF_TRUSTED_ORIGINS", "[]"))
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -83,7 +89,6 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -103,6 +108,8 @@ INSTALLED_APPS = [
     'boards',
 ]
 
+
+# Django Rest Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -128,6 +135,8 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ("Bearer",),
 }
 
+
+# Middleware configuration
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -139,6 +148,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+
+# Template configuration
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -156,8 +167,12 @@ TEMPLATES = [
     },
 ]
 
+
+# WSGI ASGI configuration
+
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = "config.asgi.application"
+
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -211,12 +226,15 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
 # Media files (Firmware)
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# nginx file uploading configuration
+
+# NGINX configuration
+
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
 FILE_UPLOAD_TEMP_DIR = "/tmp/django_uploads"
 FILE_UPLOAD_HANDLERS = [
@@ -320,10 +338,12 @@ LOGGING = {
     },
 }
 
+
 # Redis configuration
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+REDIS_URL = os.environ.get("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
 
 CHANNEL_LAYERS = {
     "default": {
@@ -331,8 +351,6 @@ CHANNEL_LAYERS = {
         "CONFIG": {"hosts": [(REDIS_HOST, REDIS_PORT)]},
     },
 }
-
-# Redis cache configuration
 
 CACHES = {
     "default": {
@@ -343,6 +361,7 @@ CACHES = {
         }
     }
 }
+
 
 # Celery configuration
 

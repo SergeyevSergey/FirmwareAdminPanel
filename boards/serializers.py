@@ -5,7 +5,7 @@ from redis.exceptions import RedisError, ConnectionError
 from rest_framework import serializers, exceptions
 from django.db import IntegrityError, transaction
 from utils.functions import publish_mqtt, MqttError
-from .tasks import mark_board_reply_timeout
+from .tasks import set_board_state_response_timeout
 from .models import Board
 
 logger = logging.getLogger(__name__)
@@ -23,21 +23,37 @@ class BoardSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         mac_address = validated_data.get("mac_address")
+        file_version = validated_data.get("file_version")
 
         # Validate
         if not mac_address:
-            logger.info("validation failed, mac_address=%s", mac_address)
-            raise serializers.ValidationError({"mac_address": "this field is required"})
+            logger.info(
+                "validation failed, mac_address=%s file_version=%s",
+                mac_address, file_version
+            )
+            raise serializers.ValidationError(
+                {"mac_address, file_version": "these fields are required"}
+            )
 
         # Save
         topic = f"boards/{mac_address}"
         try:
             with transaction.atomic():
-                instance = Board.objects.create(topic=topic, **validated_data)
-                logger.info("Board created, mac_address=%s", mac_address)
+                instance = Board.objects.create(
+                    topic=topic,
+                    file_version=file_version,
+                    **validated_data
+                )
+                logger.info(
+                    "Board created, mac_address=%s file_version=%s",
+                    mac_address, file_version
+                )
                 return instance
         except IntegrityError:
-            logger.warning("Board create failed: duplicate mac_address=%s", mac_address, exc_info=True)
+            logger.warning(
+                "Board create failed: duplicate mac_address=%s",
+                mac_address, exc_info=True
+            )
             raise serializers.ValidationError({"mac_address": "board with this mac_address already exists"})
 
 
@@ -46,7 +62,7 @@ class BoardUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Board
         fields = "__all__"
-        read_only_fields = ["mac_address", "topic"]
+        read_only_fields = ["mac_address", "topic, file_version"]
 
     def update(self, instance, validated_data):
         # Save
@@ -54,11 +70,17 @@ class BoardUpdateSerializer(serializers.ModelSerializer):
             with transaction.atomic():
                 for attr, val in validated_data.items():
                     setattr(instance, attr, val)
-                logger.info("Board updated, mac-address=%s is_active=%s", instance.mac_address, instance.is_active)
+                logger.info(
+                    "Board updated, mac-address=%s is_active=%s",
+                    instance.mac_address, instance.is_active
+                )
                 instance.save()
                 return instance
         except Exception:
-            logger.exception("update failed for mac_address=%s", instance.mac_address)
+            logger.exception(
+                "update failed for mac_address=%s",
+                instance.mac_address
+            )
             raise exceptions.APIException("failed to save board")
 
 
@@ -74,32 +96,59 @@ class BoardStateSerializer(serializers.ModelSerializer):
         old_state = instance.is_active
         new_state = not old_state
 
-        # Prepare MQTT parameters
-        context = {
-            "command": "state",
-            "value": new_state
-        }
-        topic = COMMON_TOPIC + "/" + instance.mac_address
-
-        # Set pending flag in Redis
         try:
             cache = get_redis_connection("default")
+
+            # Check if any task keys in Redis (no task keys = execute) (else cancel)
+            is_flashing = cache.exists(f"flashing:{instance.mac_address}")
+
+            if is_flashing:
+                logger.info(
+                    "board is currently flashing with mac_address=%s",
+                    instance.mac_address
+                )
+                raise serializers.ValidationError("board currently flashing")
+
+            # Set pending task key in Redis
             is_set = cache.set(f"pending:{instance.mac_address}", 1, nx=True, ex=60)
             if not is_set:
-                logger.info("command already pending for mac_address=%s", instance.mac_address)
+                logger.info(
+                    "command is already pending for mac_address=%s",
+                    instance.mac_address
+                )
                 raise serializers.ValidationError("command already pending")
-            logger.info("set pending flag for mac_address=%s", instance.mac_address)
-        except (RedisError, ConnectionError, Exception):
-            logger.exception("state changing failed for mac_address=%s", instance.mac_address)
-            raise exceptions.APIException("failed to state board")
+            else:
+                logger.info(
+                    "set pending flag for mac_address=%s",
+                    instance.mac_address
+                )
 
-        # Set timeout
-        mark_board_reply_timeout.apply_async((instance.mac_address,), countdown=30)
+            # Set timeout
+            set_board_state_response_timeout.apply_async((instance.mac_address,), countdown=30)
 
-        # Publish command in MQTT
-        try:
-            publish_mqtt(context, topic)
-        except MqttError:
-            raise exceptions.APIException("failed to send mqtt command")
+            # Publish MQTT command
+            context = {
+                "command": "state",
+                "value": new_state
+            }
+            topic = COMMON_TOPIC + "/" + instance.mac_address
+            try:
+                publish_mqtt(context, topic)
+            except MqttError:
+                # delete task key
+                cache.delete(f"pending:{instance.mac_address}")
+                logger.info(
+                    "deleted pending flag for mac_address=%s",
+                    instance.mac_address
+                )
+                # raise error
+                raise exceptions.APIException("failed to send mqtt command")
+        except (RedisError, ConnectionError):
+            logger.exception(
+                "state changing failed due to Redis error for mac_address=%s",
+                instance.mac_address
+            )
+            raise exceptions.APIException("state changing operation failed due to Redis error")
 
+        # Success
         return instance
