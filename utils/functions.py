@@ -1,13 +1,11 @@
 import os
 import json
 import logging
+from django_redis import get_redis_connection
+from asgiref.sync import async_to_sync
 import paho.mqtt.publish as publish
-from redis.exceptions import RedisError, ConnectionError
 from channels.exceptions import InvalidChannelLayerError
 from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-from django_redis import get_redis_connection
-from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
@@ -58,3 +56,12 @@ def ws_send(event: dict, group: str):
         logger.exception("channel layer error")
     except Exception:
         logger.exception("unexpected error")
+
+
+# Redis cache
+
+def cache_exists(key):
+    cache = get_redis_connection("default")
+    exists = any(cache.scan_iter(match=f"{key}*"))
+
+    return exists

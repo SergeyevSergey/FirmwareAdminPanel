@@ -9,6 +9,13 @@ class BoardsConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, code):
         await self.channel_layer.group_discard("boards", self.channel_name)
 
+    async def board_create(self, event):
+        data = event.get("data")
+        await self.send_json({
+            "event": "board_create",
+            "data": data
+        })
+
     async def board_update(self, event):
         data = event.get("data")
         command = event.get("command")

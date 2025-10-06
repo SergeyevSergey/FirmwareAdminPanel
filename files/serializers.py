@@ -1,9 +1,10 @@
 import uuid
 import logging
-from django.core.files.storage import FileSystemStorage
-from django.db import transaction, IntegrityError
-from rest_framework import serializers, exceptions
 from .models import FirmwareFile
+from django.db import transaction, IntegrityError
+from django.core.files.storage import FileSystemStorage
+from rest_framework import serializers, exceptions
+
 
 logger = logging.getLogger(__name__)
 

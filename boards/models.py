@@ -12,3 +12,4 @@ class Board(models.Model):
     file_version = models.CharField(max_length=64, null=True, blank=True)
     topic = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)

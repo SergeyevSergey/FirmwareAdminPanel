@@ -10,17 +10,20 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
+import redis.asyncio as aioredis
+
 from functools import partial
-from django.conf import settings
+from asyncio_mqtt import Client as MQTTClient, MqttError
+from boards.models import Board
 from asgiref.sync import sync_to_async, async_to_sync
 from django_redis import get_redis_connection
+from redis.exceptions import RedisError, ConnectionError
 from channels.layers import get_channel_layer
 from channels.exceptions import InvalidChannelLayerError
 from logging.handlers import RotatingFileHandler
-from asyncio_mqtt import Client as MQTTClient, MqttError
-import redis.asyncio as aioredis
-from redis.exceptions import RedisError, ConnectionError
-from boards.models import Board
+
+
+# MQTT Logger
 
 LOG_DIR = os.environ.get("LOG_DIR", "/srv/logs/mqtt_listener")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -40,20 +43,23 @@ logger.setLevel(logging.INFO)
 if not any(getattr(h, "baseFilename", "").endswith("mqtt.log") for h in logger.handlers):
     logger.addHandler(fh)
 
+
 # Constants
 
 # system
 shutdown_event = asyncio.Event()
+
 # MQTT
-GROUP_NAME = os.environ.get("MQTT_CONSUMER_GROUP", "mqtt_workers")
 MQTT_COMMON_TOPIC = os.environ.get("MQTT_COMMON_TOPIC", "boards")
-STREAM_NAME = os.environ.get("MQTT_STREAM_NAME", f"mqtt:stream:{MQTT_COMMON_TOPIC}")
 MQTT_WORKER_COUNT = int(os.environ.get("MQTT_WORKER_COUNT", "10"))
 MQTT_HOST = os.environ.get("MQTT_HOST", "emqx")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_REPLY_TOPIC = settings.MQTT_REPLY_TOPIC
+MQTT_REPLY_TOPIC = os.environ.get("MQTT_REPLY_TOPIC", "boards/replies")
 MQTT_USER = os.environ.get("MQTT_USER")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
+STREAM_NAME = os.environ.get("MQTT_STREAM_NAME", f"mqtt:stream:{MQTT_COMMON_TOPIC}")
+GROUP_NAME = os.environ.get("MQTT_CONSUMER_GROUP", "mqtt_workers")
+
 # Redis
 CONSUMER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
@@ -62,6 +68,21 @@ REDIS_URL = os.environ.get("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
 
 
 # Helpers
+
+async def ping_mqtt(host: str, port: int, timeout: float):
+    try:
+        response = asyncio.open_connection(host, port)
+        reader, writer = await asyncio.wait_for(response, timeout=timeout)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+        return True
+
+    except Exception:
+        return False
 
 async def create_redis_client():
     return aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -130,22 +151,25 @@ def db_update_board_file_version(mac_address: str, file_version: str):
 # Cache operations
 
 @sync_to_async
-def cache_get(key):
+def cache_exists(key):
     cache = get_redis_connection("default")
-    return cache.get(key)
+    exists = any(cache.scan_iter(match=f"{key}*"))
+
+    return exists
 
 @sync_to_async
 def cache_delete(key):
     cache = get_redis_connection("default")
-    return cache.delete(key)
+    return cache.delete(*cache.keys(f"{key}*"))
 
 
 # Hook functions
 
-
 # Message handling (Redis): puts messages in Redis stream
 async def message_handler(redis):
     logger.info("starting MQTT message holder to host=%s port=%s topic=%s", MQTT_HOST, MQTT_PORT, MQTT_REPLY_TOPIC)
+
+    # Set paho message retry set
     try:
         import paho.mqtt.client as paho
         paho_ver = getattr(paho, "__version__", "unknown")
@@ -163,6 +187,26 @@ async def message_handler(redis):
     except Exception:
         logger.exception("failed to inspect or patch paho; continuing anyway")
 
+    # Ping MQTT
+    retries = 0
+    pong = False
+    try:
+        while retries < 5 and not pong and not shutdown_event.is_set():
+            pong = await ping_mqtt(MQTT_HOST, MQTT_PORT, timeout=1.0)
+
+            if not pong:
+                logger.warning("could not get response from MQTT %s:%s, retry in 5s...", MQTT_HOST, MQTT_PORT)
+                retries += 1
+                await asyncio.sleep(5)
+                continue
+            else:
+                break
+        if not pong:
+            raise MqttError(f"MQTT {MQTT_HOST}:{MQTT_PORT} unreachable after {retries} attempts")
+    except MqttError:
+        logger.exception("MQTT client error")
+
+    # Accept message
     try:
         async with MQTTClient(
                 hostname=MQTT_HOST,
@@ -215,7 +259,7 @@ async def process_stream_entry(redis, entry_id, fields):
 
             # Delete Redis task key
             try:
-                pending = await cache_get(f"pending:{mac_address}")
+                pending = await cache_exists(f"pending:{mac_address}")
 
                 if pending:
                     if await cache_delete(f"pending:{mac_address}"):
@@ -259,7 +303,7 @@ async def process_stream_entry(redis, entry_id, fields):
 
             # Delete Redis task key
             try:
-                flashing = await cache_get(f"flashing:{mac_address}")
+                flashing = await cache_exists(f"flashing:{mac_address}")
 
                 if flashing:
                     if await cache_delete(f"flashing:{mac_address}"):

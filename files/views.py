@@ -1,16 +1,14 @@
-import uuid
 import logging
-from rest_framework.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_400_BAD_REQUEST, HTTP_200_OK
-from rest_framework.generics import ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.renderers import JSONRenderer
-from rest_framework.response import Response
-from rest_framework import status
-from django.db import transaction, IntegrityError
-from django.core.files.storage import FileSystemStorage
 from .models import FirmwareFile
 from .serializers import FirmwareFileSerializer, FirmwareFileUpdateSerializer
+from django.db.models import Q
+from django.core.files.storage import FileSystemStorage
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.renderers import JSONRenderer
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.generics import ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +21,15 @@ class FirmwareFilesListAPI(ListAPIView):
     serializer_class = FirmwareFileSerializer
     permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer]
+
+    def get_queryset(self):
+        queryset = FirmwareFile.objects.all()
+        version = self.request.query_params.get("version")
+        if version:
+            queryset = queryset.filter(
+                Q(version__icontains=version)
+            )
+        return queryset
 
 
 class FirmwareFileCreateAPI(CreateAPIView):
@@ -46,7 +53,6 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
     serializer_class = FirmwareFileSerializer
     lookup_field = "id"
     permission_classes = [IsAuthenticated]
-
 
     def perform_destroy(self, instance):
         file_system = FileSystemStorage()
@@ -73,7 +79,6 @@ class FirmwareFileDestroyAPI(DestroyAPIView):
 
         # Delete instance
         return super().perform_destroy(instance)
-
 
     def delete(self, request, *args, **kwargs):
         try:
